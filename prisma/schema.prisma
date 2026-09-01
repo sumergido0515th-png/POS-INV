@@ -1,0 +1,177 @@
+// JP Laagan MotoPOS — Prisma schema
+// Default datasource is SQLite for zero-dependency local/small-shop deployment.
+// To scale to multi-terminal/concurrent use, switch provider to "postgresql"
+// and point DATABASE_URL at a Postgres instance — no model changes required.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// SQLite has no native enum support in Prisma, so role/type/status fields
+// below are plain String columns. Allowed values are enforced in the app
+// layer (see lib/types.ts and lib/validations.ts) and mirror these sets:
+//   Role:          "ADMIN" | "CASHIER"
+//   MovementType:  "RECEIVE" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "SALE" | "RETURN"
+//   PaymentMethod: "CASH" | "GCASH" | "CARD" | "BANK_TRANSFER"
+//   SaleStatus:    "COMPLETED" | "VOIDED" | "REFUNDED"
+// Switching to Postgres/MySQL later can promote these back to real enums.
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  username      String   @unique
+  email         String?  @unique
+  passwordHash  String
+  role          String   @default("CASHIER")
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sales           Sale[]
+  stockMovements  StockMovement[]
+
+  @@index([role])
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  products    Product[]
+}
+
+model Brand {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+}
+
+model Supplier {
+  id            String    @id @default(cuid())
+  name          String
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  products      Product[]
+}
+
+model Product {
+  id             String    @id @default(cuid())
+  sku            String    @unique
+  barcode        String?   @unique
+  name           String
+  description    String?
+  unit           String    @default("pc")
+  costPrice      Decimal   @default(0)
+  sellingPrice   Decimal   @default(0)
+  quantity       Int       @default(0)
+  reorderLevel   Int       @default(5)
+  imageUrl       String?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  brandId String?
+  brand   Brand?  @relation(fields: [brandId], references: [id])
+
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+
+  saleItems      SaleItem[]
+  stockMovements StockMovement[]
+
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([name])
+}
+
+model StockMovement {
+  id        String   @id @default(cuid())
+  type      String
+  quantity  Int
+  reason    String?
+  createdAt DateTime @default(now())
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  saleId String?
+  sale   Sale?   @relation(fields: [saleId], references: [id])
+
+  @@index([productId])
+  @@index([saleId])
+}
+
+model Sale {
+  id            String        @id @default(cuid())
+  invoiceNo     String        @unique
+  customerName  String?
+  customerPhone String?
+  subtotal      Decimal
+  discount      Decimal       @default(0)
+  tax           Decimal       @default(0)
+  total         Decimal
+  amountPaid    Decimal
+  changeDue     Decimal  @default(0)
+  paymentMethod String   @default("CASH")
+  status        String   @default("COMPLETED")
+  createdAt     DateTime @default(now())
+
+  cashierId String
+  cashier   User   @relation(fields: [cashierId], references: [id])
+
+  items          SaleItem[]
+  stockMovements StockMovement[]
+
+  @@index([cashierId])
+  @@index([createdAt])
+}
+
+model SaleItem {
+  id          String  @id @default(cuid())
+  productName String
+  sku         String
+  unitPrice   Decimal
+  quantity    Int
+  lineTotal   Decimal
+
+  saleId String
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+model Settings {
+  id                String   @id @default(cuid())
+  businessName      String   @default("JP Laagan MotoPOS")
+  address           String?
+  phone             String?
+  email             String?
+  taxRate           Decimal  @default(0)
+  currency          String   @default("PHP")
+  receiptFooter     String?  @default("Thank you for your business!")
+  lowStockThreshold Int      @default(5)
+  updatedAt         DateTime @updatedAt
+}

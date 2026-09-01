@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "file:./dev.db"
+      NEXTAUTH_URL: "http://localhost:3000"
+      NEXTAUTH_SECRET: "${NEXTAUTH_SECRET:?set NEXTAUTH_SECRET in your .env file — generate with: openssl rand -base64 32}"
+    volumes:
+      - motopos-data:/app/prisma
+    restart: unless-stopped
+
+volumes:
+  motopos-data:
