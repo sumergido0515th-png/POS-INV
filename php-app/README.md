@@ -23,13 +23,14 @@ and business settings — see the root `README.md` for the full feature list.
 | Language | PHP 7.4+ / 8.x, procedural + small functions, no framework |
 | Database | MySQL / MariaDB via PDO (prepared statements throughout) |
 | Auth | Native PHP sessions, `password_hash()`/`password_verify()`, CSRF tokens |
-| Frontend | Server-rendered PHP + a small amount of vanilla JS (POS cart only) |
+| Frontend | Server-rendered PHP for every admin page; the POS screen is a React app (`assets/js/pos-app.js`) |
 | Styling | Self-hosted utility CSS (`assets/css/utilities.css`) — **zero external CDN dependencies**, works even if the visitor's network blocks third-party scripts |
 | Charts | Dependency-free CSS bar chart (`includes/bar_chart.php`) — no JS charting library |
 
 Nothing in this app calls out to an external service at runtime. That's a
 deliberate choice for a free host: InfinityFree visitors get a fully
 self-contained page every time, with no dependency on a CDN staying up.
+That includes React itself — see [The POS screen: React, self-hosted](#the-pos-screen-react-self-hosted).
 
 ## Directory structure
 
@@ -48,8 +49,9 @@ php-app/
   assets/
     css/utilities.css       Self-hosted utility classes (layout, color, spacing)
     css/style.css            Buttons, inputs, cards, tables, print styles
-    js/pos.js                 POS cart logic (fetch calls to api/*.php)
-  api/                    JSON endpoints called by pos.js (products, categories,
+    js/pos-app.js             The POS screen — a React app (fetch calls to api/*.php)
+    js/vendor/                 Self-hosted React, ReactDOM, and htm (see LICENSES.md)
+  api/                    JSON endpoints called by pos-app.js (products, categories,
                           brands, suppliers, settings, create_sale)
   auth/                   login.php, logout.php
   inventory/              Product CRUD, stock adjustments, categories/brands/suppliers
@@ -171,6 +173,28 @@ Then visit `http://127.0.0.1:8000/auth/login.php`.
   `stock_movements` with who did it and why, mirroring the audit trail in
   the Next.js version.
 
+### The POS screen: React, self-hosted
+
+The POS screen (`pos/index.php` + `assets/js/pos-app.js`) is a React app —
+it's the one page in this admin-panel-style app where the UI genuinely
+needs live, reactive state (cart contents, quantities, running totals,
+modal flow) rather than a page reload per action. The rest of the app
+stays plain server-rendered PHP, since that's a better fit for CRUD forms
+and tables.
+
+To keep the "zero external runtime dependency" rule intact, React,
+ReactDOM, and [htm](https://github.com/developit/htm) (a ~600-byte tagged-
+template library that gives JSX-like syntax without needing Babel or any
+build step) are **vendored as static files** in `assets/js/vendor/` rather
+than loaded from a CDN — see `vendor/LICENSES.md` for exact versions and
+how to update them. The PHP backend doesn't know or care that the POS
+screen is React; it's still just JSON endpoints under `api/`, the same
+ones a plain `fetch()` call would use.
+
+No Node.js runs on the server anywhere in this app — React only runs in
+the visitor's browser, same as any other JavaScript. Nothing here requires
+(or benefits from) a Node.js backend, which InfinityFree can't run anyway.
+
 ## Security notes
 
 - Passwords are hashed with `password_hash()` (bcrypt). Sessions are
@@ -196,6 +220,12 @@ Then visit `http://127.0.0.1:8000/auth/login.php`.
   history → sale detail → reports (all date ranges) → user management →
   settings → cashier login correctly restricted to POS + own Sales
   History only.
+- The React POS screen specifically: category filtering, add-to-cart with
+  quantity clamping at available stock, increment/decrement/remove in the
+  cart, a full checkout (payment method selection, discount, quick-cash
+  buttons, change calculation) against the live API, and a printable
+  receipt reflecting the actual payment method and totals returned by the
+  server — verified with zero browser console errors.
 - Not yet verified on InfinityFree's actual infrastructure (its specific
   PHP version, `open_basedir` restrictions, and MySQL host quirks can
   only be confirmed once deployed there) — the steps above are accurate
