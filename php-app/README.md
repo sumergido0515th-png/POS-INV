@@ -217,6 +217,60 @@ fixed. All display-setting utilities (`.hidden`, `.flex`, `.grid`,
 `!important` so they're always authoritative over component styles,
 regardless of stylesheet load order.
 
+### Closable POS cart panel (mobile/tablet)
+
+The same "unusable below desktop width" problem existed on the POS screen
+itself: the cart (`CartPanel`) was a permanently-visible sidebar column in
+a `grid-cols-1 lg:grid-cols-[1fr_360px]` layout, which meant on anything
+narrower than the `lg` breakpoint (1024px — phones, Android tablets, and
+portrait iPads) it either got squeezed unusably narrow or pushed below the
+fold entirely, with no way to reach "Charge" without scrolling past the
+whole product catalog.
+
+`assets/js/pos-app.js` now tracks viewport width with a small
+`useIsDesktop(1024)` hook (plain `window.innerWidth` + a resize listener,
+not a CSS media query — see below for why) and renders two different cart
+experiences from the same `CartPanel` component:
+
+- **≥1024px (laptop/desktop):** unchanged — the cart stays inline as a
+  sticky sidebar column, exactly as before.
+- **&lt;1024px (phone/Android/portrait &amp; landscape tablet up to
+  1024px):** the cart is hidden until there's something in it, at which
+  point a floating "View Cart · *n* · ₱*total*" button appears
+  (bottom-right, reserving space below the product grid so it never
+  overlaps the last row of cards). Tapping it opens the cart as a
+  full-screen slide-in drawer with a backdrop (tap to close), an explicit
+  × close button, and the same increment/decrement/remove/checkout flow as
+  the desktop sidebar. The drawer auto-closes if the viewport is resized
+  back to desktop width, same as the nav drawer.
+
+**A second, more serious layout bug was caught while testing this at a
+real 390px mobile viewport** (all earlier POS testing had only used
+desktop-sized Playwright viewports, so this was the first time the page
+had actually been rendered narrow): the product grid
+(`grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4`) computed
+`grid-template-columns: 0px 0px` and rendered every card as a ~26px sliver
+of overlapping text. Root cause was in `utilities.css`: a stray,
+non-media-gated copy of `.lg\:grid-cols-\[1fr_360px\]` sat right after the
+base `.grid-cols-1` rule, outside any `@media` block, so the cascade
+applied it unconditionally on *every* viewport width, not just `≥1024px`
+— the correctly media-gated copy further down the file never got a chance
+to matter. That silently forced the outer POS layout grid into a two-track
+`1fr 360px` template even on a 390px-wide screen with only one grid item
+present, which starved the nested product grid down to zero available
+width. Deleting the orphaned unconditional rule (keeping only the
+`@media (min-width: 1024px)`-gated one) fixed it — confirmed via computed-style
+inspection (`grid-template-columns` now correctly resolves to two even
+tracks at mobile widths) and a full 6-viewport Playwright pass (phone,
+Android, portrait tablet, landscape tablet, laptop, desktop) with zero
+console/page errors.
+
+Desktop-vs-mobile cart rendering is driven by JS state
+(`useIsDesktop`/`cartOpen`) rather than competing CSS display classes,
+deliberately — the nav-drawer bug above was exactly this class of problem
+(two rules of equal specificity fighting over `display`), and controlling
+it in React state sidesteps that entire failure mode for the cart.
+
 ## Security notes
 
 - Passwords are hashed with `password_hash()` (bcrypt). Sessions are

@@ -24,6 +24,22 @@
     return res.json();
   }
 
+  /** Tracks whether the viewport is at/above the desktop breakpoint (matches
+   *  the "lg" CSS breakpoint at 1024px) so the cart can switch between an
+   *  always-visible sidebar and a closable drawer without any CSS
+   *  specificity risk. */
+  function useIsDesktop(breakpoint) {
+    const [isDesktop, setIsDesktop] = useState(window.innerWidth >= breakpoint);
+    useEffect(() => {
+      function onResize() {
+        setIsDesktop(window.innerWidth >= breakpoint);
+      }
+      window.addEventListener('resize', onResize);
+      return () => window.removeEventListener('resize', onResize);
+    }, [breakpoint]);
+    return isDesktop;
+  }
+
   async function postJSON(url, body) {
     const res = await fetch(url, {
       method: 'POST',
@@ -82,12 +98,14 @@
     `;
   }
 
-  function CartPanel({ cart, subtotal, onInc, onDec, onRemove, onCheckout }) {
+  function CartPanel({ cart, subtotal, onInc, onDec, onRemove, onCheckout, onClose }) {
     return html`
-      <div class="card" style=${{ display: 'flex', flexDirection: 'column' }}>
+      <div class="card" style=${{ display: 'flex', flexDirection: 'column', height: onClose ? '100%' : 'auto' }}>
         <div class="p-4 border-b border-ink-100 flex items-center gap-2">
           <h2 class="font-semibold text-ink-900">Current Sale</h2>
-          <span class="badge bg-ink-100 text-ink-600" style=${{ marginLeft: 'auto' }}>${cart.length} item(s)</span>
+          <span class="badge bg-ink-100 text-ink-600" style=${{ marginLeft: onClose ? '0.5rem' : 'auto' }}>${cart.length} item(s)</span>
+          ${onClose &&
+          html`<button class="btn-ghost" style=${{ marginLeft: 'auto', padding: '0.5rem', minWidth: '44px', minHeight: '44px' }} onClick=${onClose} aria-label="Close cart">×</button>`}
         </div>
         <div class="p-3" style=${{ overflowY: 'auto', minHeight: '200px', maxHeight: '45vh' }}>
           ${cart.length === 0
@@ -288,6 +306,15 @@
     const [checkoutOpen, setCheckoutOpen] = useState(false);
     const [receipt, setReceipt] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [cartOpen, setCartOpen] = useState(false);
+    const isDesktop = useIsDesktop(1024);
+
+    // If the viewport grows into the desktop layout while the mobile cart
+    // drawer is open (e.g. rotating a tablet), close it — the sidebar cart
+    // takes over and the drawer must not stay stuck open behind it.
+    useEffect(() => {
+      if (isDesktop) setCartOpen(false);
+    }, [isDesktop]);
 
     const loadProducts = useCallback(() => getJSON(`${window.API_BASE}/products.php`).then(setProducts), []);
 
@@ -356,9 +383,17 @@
       return html`<p class="text-sm text-ink-500">Loading products…</p>`;
     }
 
+    const cartPanelProps = { cart, subtotal, onInc: inc, onDec: dec, onRemove: remove };
+
+    // Reserve space at the bottom of the product list on mobile/tablet so
+    // the floating "View Cart" button never overlaps the last visible row
+    // of product cards.
+    const fabReservedSpace = !isDesktop && cart.length > 0 ? '4.5rem' : undefined;
+
     return html`
+      <div>
       <div class="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
-        <div class="space-y-4 min-w-0">
+        <div class="space-y-4 min-w-0" style=${{ paddingBottom: fabReservedSpace }}>
           <input class="input" placeholder="Search by name, SKU, or brand..." value=${search} onInput=${(e) => setSearch(e.target.value)} />
           <div class="flex gap-2 overflow-x-auto pb-1">
             <button
@@ -386,22 +421,58 @@
             `}
         </div>
 
-        <div class="lg:sticky lg:top-20" style=${{ height: 'fit-content' }}>
-          <${CartPanel} cart=${cart} subtotal=${subtotal} onInc=${inc} onDec=${dec} onRemove=${remove} onCheckout=${() => setCheckoutOpen(true)} />
-        </div>
-
-        ${checkoutOpen &&
+        ${isDesktop &&
         html`
-          <${CheckoutModal}
-            subtotal=${subtotal}
-            taxRate=${Number(settings.tax_rate)}
-            currency=${settings.currency}
-            onClose=${() => setCheckoutOpen(false)}
-            onConfirm=${confirmSale}
-          />
+          <div style=${{ position: 'sticky', top: '5rem', height: 'fit-content' }}>
+            <${CartPanel} ...${cartPanelProps} onCheckout=${() => setCheckoutOpen(true)} />
+          </div>
         `}
+      </div>
 
-        ${receipt && html`<${Receipt} sale=${receipt} settings=${settings} onClose=${() => setReceipt(null)} />`}
+      ${!isDesktop &&
+      cart.length > 0 &&
+      !cartOpen &&
+      html`
+        <button
+          onClick=${() => setCartOpen(true)}
+          class="btn-primary"
+          style=${{
+            position: 'fixed',
+            right: '1rem',
+            bottom: '1rem',
+            zIndex: 40,
+            padding: '0.85rem 1.25rem',
+            fontSize: '0.9375rem',
+            boxShadow: '0 8px 20px rgba(0,0,0,0.25)',
+          }}
+        >
+          View Cart · ${cart.length} · ${fmt(subtotal)}
+        </button>
+      `}
+
+      ${!isDesktop &&
+      cartOpen &&
+      html`
+        <div style=${{ position: 'fixed', inset: 0, zIndex: 50 }} role="dialog" aria-modal="true" aria-label="Current sale">
+          <div onClick=${() => setCartOpen(false)} style=${{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }}></div>
+          <div style=${{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '22rem', maxWidth: '90vw' }}>
+            <${CartPanel} ...${cartPanelProps} onCheckout=${() => { setCartOpen(false); setCheckoutOpen(true); }} onClose=${() => setCartOpen(false)} />
+          </div>
+        </div>
+      `}
+
+      ${checkoutOpen &&
+      html`
+        <${CheckoutModal}
+          subtotal=${subtotal}
+          taxRate=${Number(settings.tax_rate)}
+          currency=${settings.currency}
+          onClose=${() => setCheckoutOpen(false)}
+          onConfirm=${confirmSale}
+        />
+      `}
+
+      ${receipt && html`<${Receipt} sale=${receipt} settings=${settings} onClose=${() => setReceipt(null)} />`}
       </div>
     `;
   }
