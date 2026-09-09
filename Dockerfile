@@ -12,7 +12,7 @@ RUN npm ci
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ENV DATABASE_URL="file:./dev.db"
+ENV DATABASE_URL="postgresql://user:password@localhost:5432/motopos"
 RUN npx prisma generate
 RUN npm run build
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-# Apply schema (creates the SQLite file on first run against the mounted volume).
+# Apply schema to the configured Postgres database (safe to re-run on restarts).
 npx prisma db push --skip-generate
 
 # Seed only if the database has no users yet (idempotent, safe on restarts).

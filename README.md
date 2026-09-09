@@ -38,7 +38,7 @@ motorcycle parts retailers. Role-based access separates day-to-day selling
 |----------------|-----------------------------------------------------|
 | Framework      | Next.js 14 (App Router, TypeScript, Server + API routes) |
 | Styling        | Tailwind CSS                                       |
-| Database       | SQLite via Prisma ORM (zero-setup; Postgres-ready) |
+| Database       | Postgres via Prisma ORM (Neon, Supabase, Railway, or self-hosted) |
 | Auth           | NextAuth (Credentials provider, JWT sessions)      |
 | Validation     | Zod                                                |
 | Charts         | Recharts                                           |
@@ -46,10 +46,12 @@ motorcycle parts retailers. Role-based access separates day-to-day selling
 ### Why this stack
 
 Next.js gives one codebase for both the UI and the API (no separate backend
-service to deploy/scale). SQLite + Prisma means the system runs anywhere with
-zero external services for a single-shop deployment, while the schema is
-written so switching to Postgres for multi-terminal/concurrent use is a
-one-line change (see [Scaling to Postgres](#scaling-to-postgres)).
+service to deploy/scale) and deploys natively to Vercel's free tier. Postgres
+is the database because Vercel's serverless functions have an ephemeral
+filesystem — a file-based database wouldn't survive between requests — and
+free managed Postgres (Neon, Supabase) is a two-minute signup with no server
+to manage. For quick local hacking without any external service, the schema
+also works unmodified against SQLite (see [Local development](#local-development)).
 
 ## Architecture
 
@@ -94,10 +96,11 @@ middleware.ts             Route protection + Admin-only route gating
   availability, computes subtotal/discount/tax/total from live settings,
   creates the `Sale` + `SaleItem` rows, decrements `Product.quantity`, and
   writes `StockMovement` rows — all or nothing.
-- SQLite has no native enum type, so `Role`, `PaymentMethod`, `MovementType`,
-  and `SaleStatus` are plain strings constrained by Zod at the API boundary
-  and by shared TypeScript unions in `lib/types.ts`. Switching to Postgres
-  lets you promote these back to real enums if desired (optional).
+- `Role`, `PaymentMethod`, `MovementType`, and `SaleStatus` are plain string
+  columns rather than native Postgres enums — this keeps the schema portable
+  to SQLite for local dev — constrained by Zod at the API boundary and by
+  shared TypeScript unions in `lib/types.ts`. They could be promoted to real
+  Postgres enums later if desired.
 
 ### Roles
 
@@ -115,13 +118,17 @@ links a role can't use.
 
 ### Prerequisites
 - Node.js 18+ and npm
+- A Postgres connection string — the free tier from [Neon](https://neon.tech)
+  or [Supabase](https://supabase.com) takes about two minutes to set up and
+  needs no server of your own. (Or use SQLite for local-only hacking — see
+  [Local development](#local-development).)
 
 ### Setup
 
 ```bash
 npm install
-cp .env.example .env        # then set NEXTAUTH_SECRET (openssl rand -base64 32)
-npx prisma db push          # creates prisma/dev.db from the schema
+cp .env.example .env        # paste your Postgres URL; set NEXTAUTH_SECRET (openssl rand -base64 32)
+npx prisma db push          # creates the schema in your database
 npm run db:seed             # demo users, categories, brands, products
 npm run dev
 ```
@@ -149,54 +156,74 @@ npm run db:studio      # Prisma Studio — browse/edit data visually
 
 ## Deployment
 
-### Option A — Docker (recommended for a shop's own server/VPS)
+### Option A — Vercel + free Postgres (recommended, free)
+
+This is the fastest path to a live URL and costs nothing at small-shop scale.
+
+1. **Get a free Postgres database.** Sign up at [neon.tech](https://neon.tech)
+   or [supabase.com](https://supabase.com), create a project, and copy the
+   connection string it gives you (Neon: the "Connection string" on the
+   project dashboard; Supabase: Project Settings → Database → Connection
+   string → "URI", using the *pooled* connection on port 6543 if offered).
+2. **Push this repo to your own GitHub account** (fork it or push this code
+   to a new repo you own — Vercel deploys from a repo you control).
+3. **Import it into Vercel.** Go to [vercel.com/new](https://vercel.com/new),
+   sign in with GitHub, and import the repo. Vercel auto-detects Next.js —
+   you don't need to change any build settings.
+4. **Set environment variables** in the Vercel project (Settings →
+   Environment Variables) before the first deploy:
+   - `DATABASE_URL` — the Postgres connection string from step 1
+   - `NEXTAUTH_SECRET` — generate with `openssl rand -base64 32`
+   - `NEXTAUTH_URL` — your Vercel URL once assigned, e.g.
+     `https://your-project.vercel.app` (you can add this after the first
+     deploy and redeploy once you know the URL)
+5. **Initialize the database.** From your machine, with `DATABASE_URL` in
+   your local `.env` set to the *same* connection string:
+   ```bash
+   npx prisma db push
+   npm run db:seed
+   ```
+6. **Deploy** (Vercel does this automatically on every push to your default
+   branch, or click "Deploy" in the dashboard).
+
+Every subsequent `git push` redeploys automatically. To scale beyond the
+free Postgres tier's connection limit under heavier concurrent load, switch
+`DATABASE_URL` to a pooled connection string (both Neon and Supabase provide
+one) — no code changes needed.
+
+### Option B — Docker (for a shop's own server/VPS)
 
 ```bash
-echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)" > .env
+echo "DATABASE_URL=postgresql://..." >> .env   # any reachable Postgres — hosted or self-run
+echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)" >> .env
 docker compose up -d --build
 ```
 
-This builds the app, runs the schema migration and demo seed automatically on
-first boot (via `docker-entrypoint.sh`), and persists the SQLite database in
-a named Docker volume (`motopos-data`) so it survives container restarts and
-image rebuilds. Set `NEXTAUTH_URL` in `docker-compose.yml` to your real
-domain (e.g. `https://pos.yourshop.com`) once you put it behind a reverse
-proxy/HTTPS (Caddy, Nginx, or Cloudflare Tunnel all work well).
+This builds the app and runs the schema migration and demo seed
+automatically on first boot (via `docker-entrypoint.sh`). Set `NEXTAUTH_URL`
+in your `.env` to your real domain (e.g. `https://pos.yourshop.com`) once
+you put it behind a reverse proxy/HTTPS (Caddy, Nginx, or Cloudflare Tunnel
+all work well). This path needs its own Postgres — either point it at the
+same free Neon/Supabase instance from Option A, or run a `postgres:16`
+container alongside it.
 
-### Option B — Vercel + hosted Postgres
+### Local development
 
-Next.js deploys natively to Vercel, but Vercel's filesystem is ephemeral so
-SQLite won't persist there — switch to Postgres first (see below), then:
-
-1. Push this repo to GitHub and import it in Vercel.
-2. Set env vars in the Vercel project: `DATABASE_URL` (your Postgres
-   connection string, e.g. from [Neon](https://neon.tech) or
-   [Supabase](https://supabase.com)), `NEXTAUTH_SECRET`, `NEXTAUTH_URL`
-   (your production URL).
-3. Run `npx prisma db push && npm run db:seed` once locally against the
-   production `DATABASE_URL` to initialize the schema and demo data (or
-   write your own seed for real shop data).
-4. Deploy.
-
-### Scaling to Postgres
-
-The schema was written to make this a small change when a shop grows to
-multiple concurrent terminals (SQLite serializes writes, which is fine for
-1–2 registers but not many):
+For quick local hacking with zero external services, you can point the
+schema back at SQLite instead of Postgres:
 
 1. In `prisma/schema.prisma`, change:
    ```prisma
    datasource db {
-     provider = "postgresql"   // was "sqlite"
+     provider = "sqlite"        // was "postgresql"
      url      = env("DATABASE_URL")
    }
    ```
-2. Point `DATABASE_URL` at your Postgres instance.
-3. `npx prisma db push` (or set up `prisma migrate` for versioned migrations).
+2. Set `DATABASE_URL="file:./dev.db"` in `.env`.
+3. `npx prisma db push && npm run db:seed`.
 
-No application code changes are required — the `role`/`paymentMethod`/etc.
-string columns work identically on Postgres (and can optionally be promoted
-to real Postgres enums later).
+No other code changes are needed either direction — remember to switch the
+provider back to `"postgresql"` before deploying.
 
 ## Security Notes
 
@@ -211,7 +238,9 @@ to real Postgres enums later).
 ## Validation & Testing Performed
 
 - `npm run typecheck` and `npm run lint` — clean, no errors/warnings.
-- `npm run build` — production build succeeds.
+- `npm run build` — production build succeeds (validated against both the
+  SQLite and Postgres datasource providers; `prisma validate`/`generate`
+  clean on Postgres).
 - End-to-end smoke test (headless browser) covering: Admin login → Dashboard →
   Inventory list → POS product search/add-to-cart → Checkout (tax/discount/
   change calculation) → completed sale → stock decrement reflected → Sales

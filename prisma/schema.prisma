@@ -1,25 +1,25 @@
 // JP Laagan MotoPOS — Prisma schema
-// Default datasource is SQLite for zero-dependency local/small-shop deployment.
-// To scale to multi-terminal/concurrent use, switch provider to "postgresql"
-// and point DATABASE_URL at a Postgres instance — no model changes required.
+// Postgres-backed (works with any Postgres host — Neon, Supabase, Railway,
+// a self-hosted instance, etc.). Point DATABASE_URL at your instance.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// SQLite has no native enum support in Prisma, so role/type/status fields
-// below are plain String columns. Allowed values are enforced in the app
-// layer (see lib/types.ts and lib/validations.ts) and mirror these sets:
+// Role/type/status fields below are plain String columns rather than native
+// Postgres enums — this keeps the schema portable to SQLite for quick local
+// dev with no server. Allowed values are enforced in the app layer (see
+// lib/types.ts and lib/validations.ts) and mirror these sets:
 //   Role:          "ADMIN" | "CASHIER"
 //   MovementType:  "RECEIVE" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "SALE" | "RETURN"
 //   PaymentMethod: "CASH" | "GCASH" | "CARD" | "BANK_TRANSFER"
 //   SaleStatus:    "COMPLETED" | "VOIDED" | "REFUNDED"
-// Switching to Postgres/MySQL later can promote these back to real enums.
+// These could be promoted to real Postgres enums later if desired.
 
 model User {
   id            String   @id @default(cuid())
