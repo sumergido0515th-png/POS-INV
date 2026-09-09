@@ -195,6 +195,28 @@ No Node.js runs on the server anywhere in this app — React only runs in
 the visitor's browser, same as any other JavaScript. Nothing here requires
 (or benefits from) a Node.js backend, which InfinityFree can't run anyway.
 
+### Responsive, closable navigation
+
+The dark sidebar (`includes/header.php`) is desktop/laptop-only (shown at
+768px viewport width and up). Below that — phones and portrait tablets —
+it's replaced by a hamburger button that opens a closable slide-in drawer
+with the same role-filtered links, a backdrop that closes it on tap, an
+Escape-key handler, and 44px-minimum touch targets throughout for
+Android/iOS. It auto-closes if the viewport is resized back to desktop
+width (e.g. rotating a tablet) so it can never get stuck open behind the
+desktop sidebar. No JS framework — a ~50-line inline script using
+`classList` toggles, consistent with the rest of the app's plain-PHP pages.
+
+This surfaced a real cross-browser CSS bug worth noting: `utilities.css`
+loads before `style.css`, so at equal specificity a component class like
+`.btn-ghost` (which sets its own `display`) was silently beating the
+`.md\:hidden` / `.flex` responsive utilities on any element carrying both
+— the hamburger button stayed visible at desktop widths until this was
+fixed. All display-setting utilities (`.hidden`, `.flex`, `.grid`,
+`.block`, `.inline-flex`, and their `sm:`/`md:` variants) now carry
+`!important` so they're always authoritative over component styles,
+regardless of stylesheet load order.
+
 ## Security notes
 
 - Passwords are hashed with `password_hash()` (bcrypt). Sessions are

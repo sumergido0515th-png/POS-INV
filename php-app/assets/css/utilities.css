@@ -379,11 +379,11 @@ body { margin: 0; }
 .max-h-\[45vh\] { max-height: 45vh; }
 .max-h-\[92vh\] { max-height: 92vh; }
 /* Flexbox / Grid */
-.flex { display: flex; }
-.inline-flex { display: inline-flex; }
-.grid { display: grid; }
-.hidden { display: none; }
-.block { display: block; }
+.flex { display: flex !important; }
+.inline-flex { display: inline-flex !important; }
+.grid { display: grid !important; }
+.hidden { display: none !important; }
+.block { display: block !important; }
 .flex-col { flex-direction: column; }
 .flex-1 { flex: 1 1 0%; }
 .flex-wrap { flex-wrap: wrap; }
@@ -467,14 +467,14 @@ a.hover\:bg-ink-900:hover, button.hover\:bg-ink-900:hover, .hover\:bg-ink-900:ho
 
 /* Responsive (Tailwind default breakpoints) */
 @media (min-width: 640px) {
-  .sm\:block { display: block; }
+  .sm\:block { display: block !important; }
   .sm\:flex-row { flex-direction: row; }
   .sm\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .sm\:items-center { align-items: center; }
 }
 @media (min-width: 768px) {
-  .md\:flex { display: flex; }
-  .md\:hidden { display: none; }
+  .md\:flex { display: flex !important; }
+  .md\:hidden { display: none !important; }
   .md\:p-6 { padding: 1.5rem; }
   .md\:px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
   .md\:grid-cols-\[1fr_320px\] { grid-template-columns: 1fr 320px; }
