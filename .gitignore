@@ -16,6 +16,9 @@ prisma/dev.db-journal
 *.db
 *.db-journal
 
+# php-app local config (contains real DB credentials)
+php-app/config/config.php
+
 # misc
 .DS_Store
 *.pem

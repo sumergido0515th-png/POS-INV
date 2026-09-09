@@ -4,6 +4,14 @@ A modern, web-based **Point of Sale and Inventory Management System** built for
 motorcycle parts retailers. Role-based access separates day-to-day selling
 (Cashier) from full business control (Owner/Admin).
 
+> **Two independent implementations in this repo:**
+> - **This folder (root)** — Next.js + Prisma + Postgres. Deploys to Vercel or
+>   any Node.js host. This is the primary, actively-developed version.
+> - **[`php-app/`](php-app/README.md)** — a from-scratch PHP + MySQL rebuild
+>   with the same features, purpose-built for PHP-only shared hosting like
+>   **InfinityFree** (no Node.js, no build step, no Composer/SSH needed).
+>   Pick whichever matches your hosting target.
+
 ## Features
 
 **Point of Sale (Cashier + Admin)**
